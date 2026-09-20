@@ -1,1 +1,50 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/abhisek/AllProject.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("fastapi-project:${env.BUILD_NUMBER}")
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                sh 'pytest myproject/tests/'
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh "echo $PASS | docker login -u $USER --password-stdin"
+                    sh "docker push mydockerhub/fastapi-project:${env.BUILD_NUMBER}"
+                }
+            }
+        }
+
+        stage('Deploy to Databricks') {
+            steps {
+                sh '''
+                curl -X POST https://<databricks-instance>/api/2.1/jobs/run-now \
+                -H "Authorization: Bearer $DATABRICKS_TOKEN" \
+                -d '{
+                      "job_id": <your-job-id>,
+                      "notebook_params": {
+                        "docker_image": "mydockerhub/fastapi-project:${BUILD_NUMBER}"
+                      }
+                    }'
+                '''
+            }
+        }
+    }
+}
 
